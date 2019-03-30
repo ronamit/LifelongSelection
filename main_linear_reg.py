@@ -99,7 +99,7 @@ def run_task_learner(trainData, priorMu):
 nPriors = 5
 priorsSetMu = np.linspace(0.0, 10.0, nPriors)
 priorsSetMu = np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
-# TODO: make prior variance different so it will help the results whcih the prior is correct
+# TODO: make prior variance different so it will help the results which the prior is correct
 
 taskEnv = TaskEnviornment()
 
