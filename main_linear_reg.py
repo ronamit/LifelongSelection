@@ -125,3 +125,11 @@ for t in range(T):
 
 # TODO: hyper-posterior calculation and meta-testing
 print([(priorsSetMu[k],priorsLoss[k]) for k in range(nPriors)])
+
+
+hyperPrior = np.ones(nPriors) / nPriors
+alpha = 1 / np.sqrt(T) + 1 / n_samples # assuming all tasks have the same number of samples
+hyperPosterior = (hyperPrior ** alpha) * np.exp(-(1/T) * priorsLoss)
+hyperPosterior = hyperPosterior / hyperPosterior.sum()
+print(hyperPosterior)
+# TODO: hyper-posterior calculation and meta-testing
