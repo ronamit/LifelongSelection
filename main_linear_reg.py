@@ -9,17 +9,16 @@ matplotlib.rcParams.update({'lines.linewidth': 2})
 matplotlib.rcParams['pdf.fonttype'] = 42
 matplotlib.rcParams['ps.fonttype'] = 42
 
-# -------------------------------------------------------------------------------------------
-#  Create data
-# -------------------------------------------------------------------------------------------
 
 # TODO: Random seed
 
 device_id = 0
 torch.cuda.device(device_id)
 
-
-class TaskEnviornment():
+# -------------------------------------------------------------------------------------------
+#  Task-environment class
+# -------------------------------------------------------------------------------------------
+class TaskEnvironment():
     def __init__(self):
         self.aMean = 3
         self.aStd = 1 # TODO: increase
@@ -31,8 +30,32 @@ class TaskEnviornment():
         a = self.aStd * np.random.randn(dim, 1) + self.aMean
         return Task(self, a)
 
+# -------------------------------------------------------------------------------------------
+#  Task class
+# -------------------------------------------------------------------------------------------
+class Task():
+    def __init__(self, taskEnv, a):
+        self.xRange = (0, 10)
+        self.a = a
+        self.dim = a.shape[0]
+        self.noiseStd = taskEnv.noiseStd
+        self.xRange = taskEnv.xRange
 
 
+    def get_samples(self, n_samples=1):
+        dim = self.dim
+        x = self.xRange[0] + np.random.rand(n_samples, dim) * self.xRange[1]
+        a = self.a
+        noise = self.noiseStd * np.random.randn(n_samples, dim)
+        y = np.matmul(x, a) + noise
+        samples = DataSet(x,y)
+        return samples
+    # def calc_test_error(self):
+
+
+# -------------------------------------------------------------------------------------------
+#  DataSet class
+# -------------------------------------------------------------------------------------------
 class DataSet():
     def __init__(self, x, y):
         self.x = torch.from_numpy(x).type(torch.float)
@@ -57,27 +80,9 @@ class DataSet():
         plt.show()
 
 
-class Task():
-    def __init__(self, taskEnv, a):
-        self.xRange = (0, 10)
-        self.a = a
-        self.dim = a.shape[0]
-        self.noiseStd = taskEnv.noiseStd
-        self.xRange = taskEnv.xRange
-
-
-    def get_samples(self, n_samples=1):
-        dim = self.dim
-        x = self.xRange[0] + np.random.rand(n_samples, dim) * self.xRange[1]
-        a = self.a
-        noise = self.noiseStd * np.random.randn(n_samples, dim)
-        y = np.matmul(x, a) + noise
-        samples = DataSet(x,y)
-        return samples
-    # def calc_test_error(self):
-
-
-
+# -------------------------------------------------------------------------------------------
+#  Task-learning function
+# -------------------------------------------------------------------------------------------
 def run_task_learner(trainData, priorMu, priorVar):
     # note: we assume priorVar == postVar
     taskBound = None
@@ -94,21 +99,23 @@ def run_task_learner(trainData, priorMu, priorVar):
     # TODO: calculate exact bound for comparison with actual results
     return postMu, taskBound
 
-# Main Script
 
-
+# -------------------------------------------------------------------------------------------
+#  # Main Script
+# -------------------------------------------------------------------------------------------
 nPriors = 5
 priorsSetMu = np.linspace(0.0, 10.0, nPriors)
 priorsSetMu = np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
 priorVar = 0.1**2  # TODO: make prior variance different so it will help the results which the prior is correct
 postVar = priorVar
 
-
 priorsLoss = np.zeros(nPriors)
 
-taskEnv = TaskEnviornment()
+taskEnv = TaskEnvironment()
 
-# Main sequence loop
+# -------------------------------------------------------------------------------------------
+#   Main lifelong learning loop
+# -------------------------------------------------------------------------------------------
 T = 1  # number of tasks
 for t in range(T):
     # generate task
@@ -123,13 +130,18 @@ for t in range(T):
         priorsLoss[i_prior] += taskBound
 
 
-# TODO: hyper-posterior calculation and meta-testing
-print([(priorsSetMu[k],priorsLoss[k]) for k in range(nPriors)])
+# -------------------------------------------------------------------------------------------
+# hyper-posterior calculation
+# -------------------------------------------------------------------------------------------
 
+print([(priorsSetMu[k],priorsLoss[k]) for k in range(nPriors)])
 
 hyperPrior = np.ones(nPriors) / nPriors
 alpha = 1 / np.sqrt(T) + 1 / n_samples # assuming all tasks have the same number of samples
 hyperPosterior = (hyperPrior ** alpha) * np.exp(-(1/T) * priorsLoss)
 hyperPosterior = hyperPosterior / hyperPosterior.sum()
 print(hyperPosterior)
-# TODO: hyper-posterior calculation and meta-testing
+
+# -------------------------------------------------------------------------------------------
+# meta-testing
+# -------------------------------------------------------------------------------------------
