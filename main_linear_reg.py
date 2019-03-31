@@ -21,8 +21,8 @@ torch.cuda.device(device_id)
 
 class TaskEnviornment():
     def __init__(self):
-        self.aMean = 5
-        self.aStd = 0.001 # TODO: increase
+        self.aMean = 3
+        self.aStd = 1 # TODO: increase
         self.noiseStd = 4.0
         self.xRange = (0, 10)
 
@@ -78,19 +78,20 @@ class Task():
 
 
 
-def run_task_learner(trainData, priorMu):
+def run_task_learner(trainData, priorMu, priorVar):
+    # note: we assume priorVar == postVar
     taskBound = None
     postMu = None
     x = trainData.x
     y = trainData.y
     dim = x.shape[1]
     n_samples = trainData.n_samples
-    regFactor = np.sqrt(n_samples) * 10
-    # TODO: set regFactor according to prior variance
-    matA = regFactor * torch.eye(dim) + torch.matmul(x.t(),  x)
-    matB = regFactor * priorMu + torch.matmul(x.t(), y)
-    postMu = torch.matmul(torch.pinverse(matA), matB)
-    # TODO: calculate taskBound
+    regFactor = np.sqrt(n_samples) / (2 * priorVar)
+    matX = regFactor * torch.eye(dim) + torch.matmul(x.t(),  x)
+    matY = regFactor * priorMu + torch.matmul(x.t(), y)
+    postMu = torch.matmul(torch.pinverse(matX), matY)
+    taskBound = (1/n_samples) * (torch.norm(matY - matX.t() * postMu) + regFactor * torch.norm(postMu - priorMu))
+    # TODO: calculate exact bound for comparison with actual results
     return postMu, taskBound
 
 # Main Script
@@ -99,7 +100,11 @@ def run_task_learner(trainData, priorMu):
 nPriors = 5
 priorsSetMu = np.linspace(0.0, 10.0, nPriors)
 priorsSetMu = np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
-# TODO: make prior variance different so it will help the results which the prior is correct
+priorVar = 0.1**2  # TODO: make prior variance different so it will help the results which the prior is correct
+postVar = priorVar
+
+
+priorsLoss = np.zeros(nPriors)
 
 taskEnv = TaskEnviornment()
 
@@ -108,12 +113,15 @@ T = 1  # number of tasks
 for t in range(T):
     # generate task
     task = taskEnv.generate_task()
+    print(task.a)
     n_samples = 4
     trainData = task.get_samples(n_samples)
-    trainData.plot()
+    # trainData.plot()
     for i_prior in range(nPriors):
         priorMu = priorsSetMu[i_prior]
-        postMu, taskBound = run_task_learner(trainData, priorMu)
-        print(postMu)
+        postMu, taskBound = run_task_learner(trainData, priorMu, priorVar)
+        priorsLoss[i_prior] += taskBound
+
 
 # TODO: hyper-posterior calculation and meta-testing
+print([(priorsSetMu[k],priorsLoss[k]) for k in range(nPriors)])
