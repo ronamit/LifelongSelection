@@ -103,9 +103,10 @@ def run_task_learner(trainData, priorMu, priorVar):
 # -------------------------------------------------------------------------------------------
 #  # Main Script
 # -------------------------------------------------------------------------------------------
-nPriors = 5
-priorsSetMu = np.linspace(0.0, 10.0, nPriors)
+# nPriors = 5
+# priorsSetMu = np.linspace(0.0, 10.0, nPriors)
 priorsSetMu = np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
+nPriors = priorsSetMu.shape[0]
 priorVar = 0.1**2  # TODO: make prior variance different so it will help the results which the prior is correct
 postVar = priorVar
 
@@ -113,6 +114,7 @@ priorsLoss = np.zeros(nPriors)
 
 taskEnv = TaskEnvironment()
 
+n_samples = 4 # number of samples per task TODO: draw at random for each task
 # -------------------------------------------------------------------------------------------
 #   Main lifelong learning loop
 # -------------------------------------------------------------------------------------------
@@ -121,7 +123,6 @@ for t in range(T):
     # generate task
     task = taskEnv.generate_task()
     print(task.a)
-    n_samples = 4
     trainData = task.get_samples(n_samples)
     # trainData.plot()
     for i_prior in range(nPriors):
@@ -137,7 +138,7 @@ for t in range(T):
 print([(priorsSetMu[k],priorsLoss[k]) for k in range(nPriors)])
 
 hyperPrior = np.ones(nPriors) / nPriors
-alpha = 1 / np.sqrt(T) + 1 / n_samples # assuming all tasks have the same number of samples
+alpha = 1 / np.sqrt(T) + 1 / n_samples  # assuming all tasks have the same number of samples
 hyperPosterior = (hyperPrior ** alpha) * np.exp(-(1/T) * priorsLoss)
 hyperPosterior = hyperPosterior / hyperPosterior.sum()
 print(hyperPosterior)
@@ -145,3 +146,12 @@ print(hyperPosterior)
 # -------------------------------------------------------------------------------------------
 # meta-testing
 # -------------------------------------------------------------------------------------------
+nReps = 100
+for t in range(nReps):
+    # draw prior from hyper-posterior
+    priorMu = np.random.choice(priorsSetMu, 1, p=hyperPosterior)[0]
+    # generate task
+    task = taskEnv.generate_task()
+    trainData = task.get_samples(n_samples)
+    postMu, taskBound = run_task_learner(trainData, priorMu, priorVar)
+    # Check expected error
