@@ -50,7 +50,16 @@ class Task():
         y = np.matmul(x, a) + noise
         samples = DataSet(x,y)
         return samples
-    # def calc_test_error(self):
+
+    def est_test_error(self, postMu, postVar):
+        n_samples_test = 1000
+        self.get_samples(n_samples_test)
+        x = trainData.x
+        y = trainData.y
+        test_err = (1/n_samples_test) * (torch.norm(y - torch.matmul(x,postMu))**2 + postVar * torch.norm(x)**2)
+        return test_err
+
+
 
 
 # -------------------------------------------------------------------------------------------
@@ -92,10 +101,10 @@ def run_task_learner(trainData, priorMu, priorVar):
     dim = x.shape[1]
     n_samples = trainData.n_samples
     regFactor = np.sqrt(n_samples) / (2 * priorVar)
-    matX = regFactor * torch.eye(dim) + torch.matmul(x.t(),  x)
-    matY = regFactor * priorMu + torch.matmul(x.t(), y)
-    postMu = torch.matmul(torch.pinverse(matX), matY)
-    taskBound = (1/n_samples) * (torch.norm(matY - matX.t() * postMu) + regFactor * torch.norm(postMu - priorMu))
+    matA = regFactor * torch.eye(dim) + torch.matmul(x.t(),  x)
+    matB = regFactor * priorMu + torch.matmul(x.t(), y)
+    postMu = torch.matmul(torch.pinverse(matA), matB)
+    taskBound = (1/n_samples) * (torch.norm(matB - matA.t() * postMu)**2 + regFactor * torch.norm(postMu - priorMu)**2)
     # TODO: calculate exact bound for comparison with actual results
     return postMu, taskBound
 
@@ -110,15 +119,15 @@ nPriors = priorsSetMu.shape[0]
 priorVar = 0.1**2  # TODO: make prior variance different so it will help the results which the prior is correct
 postVar = priorVar
 
-priorsLoss = np.zeros(nPriors)
+cumulativeBound = np.zeros(nPriors)
 
 taskEnv = TaskEnvironment()
 
-n_samples = 4 # number of samples per task TODO: draw at random for each task
+n_samples = 3 # number of samples per task TODO: draw at random for each task
 # -------------------------------------------------------------------------------------------
 #   Main lifelong learning loop
 # -------------------------------------------------------------------------------------------
-T = 1  # number of tasks
+T = 50  # number of tasks
 for t in range(T):
     # generate task
     task = taskEnv.generate_task()
@@ -128,26 +137,30 @@ for t in range(T):
     for i_prior in range(nPriors):
         priorMu = priorsSetMu[i_prior]
         postMu, taskBound = run_task_learner(trainData, priorMu, priorVar)
-        priorsLoss[i_prior] += taskBound
+        cumulativeBound[i_prior] += taskBound
 
 
 # -------------------------------------------------------------------------------------------
 # hyper-posterior calculation
 # -------------------------------------------------------------------------------------------
 
-print([(priorsSetMu[k],priorsLoss[k]) for k in range(nPriors)])
+print([(priorsSetMu[k], cumulativeBound[k]) for k in range(nPriors)])
 
 hyperPrior = np.ones(nPriors) / nPriors
 alpha = 1 / np.sqrt(T) + 1 / n_samples  # assuming all tasks have the same number of samples
-hyperPosterior = (hyperPrior ** alpha) * np.exp(-(1/T) * priorsLoss)
+hyperPosterior = (hyperPrior ** alpha) * np.exp(-(1/T) * cumulativeBound)
 hyperPosterior = hyperPosterior / hyperPosterior.sum()
 print(hyperPosterior)
+
+transferBound = np.sum(hyperPosterior * (cumulativeBound / T + alpha * np.log(hyperPosterior / hyperPrior)))
+print('Transfer Bound: {}'.format(transferBound))
 
 # -------------------------------------------------------------------------------------------
 # meta-testing
 # -------------------------------------------------------------------------------------------
 nReps = 100
-for t in range(nReps):
+errVec = np.zeros(nReps)
+for iRep in range(nReps):
     # draw prior from hyper-posterior
     priorMu = np.random.choice(priorsSetMu, 1, p=hyperPosterior)[0]
     # generate task
@@ -155,3 +168,7 @@ for t in range(nReps):
     trainData = task.get_samples(n_samples)
     postMu, taskBound = run_task_learner(trainData, priorMu, priorVar)
     # Check expected error
+    errVec[iRep] = task.est_test_error(postMu, postVar)
+print('Estimated transfer-error: {}'.format(errVec.mean()))
+
+
