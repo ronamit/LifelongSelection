@@ -24,7 +24,7 @@ class TaskEnvironment():
     def __init__(self):
         self.aMean = 3 * np.ones(dim)
         self.aStd = 1.0 * np.ones(dim)
-        self.noiseStd = 6.0
+        self.noiseStd = 1.0
         self.xRange = (0, 10)
 
     def generate_task(self):
@@ -109,8 +109,8 @@ def run_task_learner(trainData, priorMu, priorVar):
     # postMu = torch.from_numpy(np.linalg.solve(matA, matB))
     postMu = torch.matmul(torch.pinverse(matA), matB)
     taskBound = (1/n_samples) * (torch.norm(matB - torch.matmul(matA.t(), postMu))**2
-                                 + regFactor * torch.norm(postMu - priorMu)**2)
-    # TODO: calculate exact bound for comparison with actual results
+                                 + np.sqrt(regFactor) * torch.norm(postMu - priorMu)**1)
+    # TODO: calculate exact bound for comparison with actual results - use the sqrtKL version
     return postMu, taskBound
 
 def run_no_prior_learner(trainData):
@@ -138,7 +138,7 @@ cumulativeBound = np.zeros(nPriors)
 
 taskEnv = TaskEnvironment()
 
-n_samples = 2 # number of samples per task TODO: draw at random for each task
+n_samples = 4 # number of samples per task TODO: draw at random for each task
 # -------------------------------------------------------------------------------------------
 #   Main lifelong learning loop
 # -------------------------------------------------------------------------------------------
