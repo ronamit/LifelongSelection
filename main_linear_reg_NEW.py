@@ -15,8 +15,8 @@ matplotlib.rcParams['ps.fonttype'] = 42
 device_id = 0
 torch.cuda.device(device_id)
 
-dim = 10
-
+dim = 3
+delta = 0.95
 # -------------------------------------------------------------------------------------------
 #  Task-environment class
 # -------------------------------------------------------------------------------------------
@@ -95,7 +95,7 @@ class DataSet():
 # -------------------------------------------------------------------------------------------
 #  Task-learning function
 # -------------------------------------------------------------------------------------------
-def run_task_learner(trainData, priorMu, priorVar):
+def run_task_learner(trainData, priorMu, priorVar, T):
     # note: we assume priorVar == postVar
     taskBound = None
     postMu = None
@@ -109,7 +109,8 @@ def run_task_learner(trainData, priorMu, priorVar):
     # postMu = torch.from_numpy(np.linalg.solve(matA, matB))
     postMu = torch.matmul(torch.pinverse(matA), matB)
     taskBound = (1/n_samples) * (torch.norm(matB - torch.matmul(matA.t(), postMu))**2
-                                 + np.sqrt(regFactor) * torch.norm(postMu - priorMu)**1)
+                                 + (regFactor) * torch.norm(postMu - priorMu)**2) \
+                                 + (1/8 + np.log(n_samples * T / delta)) / np.sqrt(n_samples)
     # TODO: calculate exact bound for comparison with actual results - use the sqrtKL version
     return postMu, taskBound
 
@@ -135,7 +136,7 @@ nPriors = priorsSetMu.shape[0]
 priorVar = 0.2**2  # TODO: make prior variance different so it will help the results which the prior is correct
 postVar = priorVar
 
-n_samples = 2 # number of samples per task TODO: draw at random for each task
+n_samples = 100 # number of samples per task TODO: draw at random for each task
 
 def run_lifelong(T, showFlag):
     cumulativeBound = np.zeros(nPriors)
@@ -150,7 +151,7 @@ def run_lifelong(T, showFlag):
         # trainData.plot()
         for i_prior in range(nPriors):
             priorMu = priorsSetMu[i_prior]
-            postMu, taskBound = run_task_learner(trainData, priorMu, priorVar)
+            postMu, taskBound = run_task_learner(trainData, priorMu, priorVar, T)
             cumulativeBound[i_prior] += taskBound
 
     # -------------------------------------------------------------------------------------------
@@ -166,7 +167,8 @@ def run_lifelong(T, showFlag):
     # print(hyperPosterior)
 
     transferBound = np.sum(hyperPosterior * (cumulativeBound / T
-                                             + alpha * np.log(hyperPosterior / hyperPrior)))
+                                             + alpha * np.log(hyperPosterior / hyperPrior))) \
+                                             + (1/8 + np.log(1 / delta)) / np.sqrt(T)
 
     # -------------------------------------------------------------------------------------------
     # meta-testing
@@ -185,15 +187,15 @@ def run_lifelong(T, showFlag):
         task = taskEnv.generate_task()
         trainData = task.get_samples(n_samples)
         # Check expected error when using learned hyper-posterior
-        postMu, taskBound = run_task_learner(trainData, priorMu, priorVar)
+        postMu, taskBound = run_task_learner(trainData, priorMu, priorVar, 1)
         errVecAlg[iRep] = task.est_test_error(postMu, postVar)
 
         # Check expected error when using learned hyper-posterior + peak of posterior
-        postMu, taskBound = run_task_learner(trainData, priorMu, priorVar)
+        postMu, taskBound = run_task_learner(trainData, priorMu, priorVar, 1)
         errVecAlgPeak[iRep] = task.est_test_error(postMu, 0)
 
         # Check expected error when using prior #0
-        postMu, taskBound = run_task_learner(trainData, priorsSetMu[0], priorVar)
+        postMu, taskBound = run_task_learner(trainData, priorsSetMu[0], priorVar, 1)
         errVec0prior[iRep] = task.est_test_error(postMu, postVar)
 
         # Check expected error when using no prior
@@ -222,7 +224,7 @@ def run_lifelong(T, showFlag):
 # -------------------------------------------------------------------------------------------
 
 # grid of number of tasks\horizon
-T = 2
+T = 10
 horizonsGrid = [T]
 
 for iHorizon, T in enumerate(horizonsGrid):
