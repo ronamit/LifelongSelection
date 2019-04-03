@@ -165,7 +165,8 @@ def run_lifelong(T, showFlag):
     hyperPosterior = hyperPosterior / hyperPosterior.sum()
     # print(hyperPosterior)
 
-    transferBound = np.sum(hyperPosterior * (cumulativeBound / T + alpha * np.log(hyperPosterior / hyperPrior)))
+    transferBound = np.sum(hyperPosterior * (cumulativeBound / T
+                                             + alpha * np.log(hyperPosterior / hyperPrior)))
 
     # -------------------------------------------------------------------------------------------
     # meta-testing
