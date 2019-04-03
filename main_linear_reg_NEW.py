@@ -135,85 +135,98 @@ nPriors = priorsSetMu.shape[0]
 priorVar = 0.2**2  # TODO: make prior variance different so it will help the results which the prior is correct
 postVar = priorVar
 
-cumulativeBound = np.zeros(nPriors)
-
-taskEnv = TaskEnvironment()
-
 n_samples = 2 # number of samples per task TODO: draw at random for each task
-# -------------------------------------------------------------------------------------------
-#   Main lifelong learning loop
-# -------------------------------------------------------------------------------------------
-T = 50 # number of tasks
-for t in range(T):
-    # generate task
-    task = taskEnv.generate_task()
-    # print(task.a)
-    trainData = task.get_samples(n_samples)
-    # trainData.plot()
-    for i_prior in range(nPriors):
-        priorMu = priorsSetMu[i_prior]
+
+def run_lifelong(T, showFlag):
+    cumulativeBound = np.zeros(nPriors)
+
+    taskEnv = TaskEnvironment()
+
+    for t in range(T):
+        # generate task
+        task = taskEnv.generate_task()
+        # print(task.a)
+        trainData = task.get_samples(n_samples)
+        # trainData.plot()
+        for i_prior in range(nPriors):
+            priorMu = priorsSetMu[i_prior]
+            postMu, taskBound = run_task_learner(trainData, priorMu, priorVar)
+            cumulativeBound[i_prior] += taskBound
+
+    # -------------------------------------------------------------------------------------------
+    # hyper-posterior calculation
+    # -------------------------------------------------------------------------------------------
+
+    # print([(k, cumulativeBound[k] / T) for k in range(nPriors)])
+
+    hyperPrior = np.ones(nPriors) / nPriors
+    alpha = 1 / np.sqrt(T) + 1 / n_samples  # assuming all tasks have the same number of samples
+    hyperPosterior = (hyperPrior ** alpha) * np.exp(-(1/T) * cumulativeBound)
+    hyperPosterior = hyperPosterior / hyperPosterior.sum()
+    # print(hyperPosterior)
+
+    transferBound = np.sum(hyperPosterior * (cumulativeBound / T + alpha * np.log(hyperPosterior / hyperPrior)))
+
+    # -------------------------------------------------------------------------------------------
+    # meta-testing
+    # -------------------------------------------------------------------------------------------
+    nReps = 100
+    errVecAlg = np.zeros(nReps)
+    errVec0prior = np.zeros(nReps)
+    errVecNoPrior = np.zeros(nReps)
+    errVecAlgPeak = np.zeros(nReps)
+
+    for iRep in range(nReps):
+        # draw prior from hyper-posterior
+        priorInd = np.random.choice(nPriors, 1, p=hyperPosterior)[0]
+        priorMu = priorsSetMu[priorInd]
+        # generate task
+        task = taskEnv.generate_task()
+        trainData = task.get_samples(n_samples)
+        # Check expected error when using learned hyper-posterior
         postMu, taskBound = run_task_learner(trainData, priorMu, priorVar)
-        cumulativeBound[i_prior] += taskBound
+        errVecAlg[iRep] = task.est_test_error(postMu, postVar)
+
+        # Check expected error when using learned hyper-posterior + peak of posterior
+        postMu, taskBound = run_task_learner(trainData, priorMu, priorVar)
+        errVecAlgPeak[iRep] = task.est_test_error(postMu, 0)
+
+        # Check expected error when using prior #0
+        postMu, taskBound = run_task_learner(trainData, priorsSetMu[0], priorVar)
+        errVec0prior[iRep] = task.est_test_error(postMu, postVar)
+
+        # Check expected error when using no prior
+        est_a = run_no_prior_learner(trainData)
+        errVecNoPrior[iRep] = task.est_test_error(est_a, 0)
+    # end of iRep loop
+
+    if showFlag:
+        fig1 = plt.figure()
+        plt.plot(priorsSetMuVal, hyperPosterior, 'o')
+        plt.xlabel('Prior Mu')
+        plt.ylabel('Hyper-Posterior')
+
+        print('Transfer Bound: {}'.format(transferBound))
+        print('Estimated transfer-error, using Lifelong Alg: {}'.format(errVecAlg.mean()))
+        print('Estimated transfer-error, using Lifelong Alg +peak-posterior: {}'.format(errVecAlgPeak.mean()))
+        print('Estimated transfer-error, using prior #0: {}'.format(errVec0prior.mean()))
+        print('Estimated transfer-error, not using prior: {}'.format(errVecNoPrior.mean()))
+
+    return
+# -------------------------------------------------------------------------------------------
 
 
 # -------------------------------------------------------------------------------------------
-# hyper-posterior calculation
+#    lifelong learning
 # -------------------------------------------------------------------------------------------
 
-print([(k, cumulativeBound[k] / T) for k in range(nPriors)])
+# grid of number of tasks\horizon
+T = 2
+horizonsGrid = [T]
 
-hyperPrior = np.ones(nPriors) / nPriors
-alpha = 1 / np.sqrt(T) + 1 / n_samples  # assuming all tasks have the same number of samples
-hyperPosterior = (hyperPrior ** alpha) * np.exp(-(1/T) * cumulativeBound)
-hyperPosterior = hyperPosterior / hyperPosterior.sum()
-# print(hyperPosterior)
-
-fig1 = plt.figure()
-plt.plot(priorsSetMuVal, hyperPosterior, 'o')
-plt.xlabel('Prior Mu')
-plt.ylabel('Hyper-Posterior')
-
-transferBound = np.sum(hyperPosterior * (cumulativeBound / T + alpha * np.log(hyperPosterior / hyperPrior)))
-print('Transfer Bound: {}'.format(transferBound))
-
-# -------------------------------------------------------------------------------------------
-# meta-testing
-# -------------------------------------------------------------------------------------------
-nReps = 100
-errVecAlg = np.zeros(nReps)
-errVec0prior = np.zeros(nReps)
-errVecNoPrior = np.zeros(nReps)
-errVecAlgPeak = np.zeros(nReps)
-
-for iRep in range(nReps):
-    # draw prior from hyper-posterior
-    priorInd = np.random.choice(nPriors, 1, p=hyperPosterior)[0]
-    priorMu = priorsSetMu[priorInd]
-    # generate task
-    task = taskEnv.generate_task()
-    trainData = task.get_samples(n_samples)
-    # Check expected error when using learned hyper-posterior
-    postMu, taskBound = run_task_learner(trainData, priorMu, priorVar)
-    errVecAlg[iRep] = task.est_test_error(postMu, postVar)
-
-    # Check expected error when using learned hyper-posterior + peak of posterior
-    postMu, taskBound = run_task_learner(trainData, priorMu, priorVar)
-    errVecAlgPeak[iRep] = task.est_test_error(postMu, 0)
-
-    # Check expected error when using prior #0
-    postMu, taskBound = run_task_learner(trainData, priorsSetMu[0], priorVar)
-    errVec0prior[iRep] = task.est_test_error(postMu, postVar)
-
-    # Check expected error when using no prior
-    est_a = run_no_prior_learner(trainData)
-    errVecNoPrior[iRep] = task.est_test_error(est_a, 0)
-
-
-print('Estimated transfer-error, using Lifelong Alg: {}'.format(errVecAlg.mean()))
-print('Estimated transfer-error, using Lifelong Alg +peak-posterior: {}'.format(errVecAlgPeak.mean()))
-print('Estimated transfer-error, using prior #0: {}'.format(errVec0prior.mean()))
-print('Estimated transfer-error, not using prior: {}'.format(errVecNoPrior.mean()))
-
+for iHorizon, T in enumerate(horizonsGrid):
+    showFlag = (iHorizon == len(horizonsGrid) - 1) # show plot in final run
+    run_lifelong(T, showFlag)
 
 plt.show()
 
