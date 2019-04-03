@@ -23,9 +23,9 @@ dim = 10
 class TaskEnvironment():
     def __init__(self):
         self.aMean = 3 * np.ones(dim)
-        self.aStd = 1.0 * np.ones(dim)
-        self.noiseStd = 1.0
-        self.xRange = (0, 10)
+        self.aStd = 4.0 * np.ones(dim)
+        self.noiseStd = 5.0
+        self.xRange = (0, 1)
 
     def generate_task(self):
         # dim = 1  # dimension of feature vector
@@ -126,9 +126,10 @@ def run_no_prior_learner(trainData):
 # -------------------------------------------------------------------------------------------
 #  # Main Script
 # -------------------------------------------------------------------------------------------
-# nPriors = 5
-# priorsSetMu = np.linspace(0.0, 10.0, nPriors)
-priorsSetMuVal = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+nPriors = 50
+priorsSetMuVal = np.linspace(0.0, 10.0, nPriors)
+# priorsSetMuVal = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+
 priorsSetMu = torch.tensor([np.ones(dim) * c for c in priorsSetMuVal]).type(torch.float)
 nPriors = priorsSetMu.shape[0]
 priorVar = 0.2**2  # TODO: make prior variance different so it will help the results which the prior is correct
@@ -138,11 +139,11 @@ cumulativeBound = np.zeros(nPriors)
 
 taskEnv = TaskEnvironment()
 
-n_samples = 4 # number of samples per task TODO: draw at random for each task
+n_samples = 2 # number of samples per task TODO: draw at random for each task
 # -------------------------------------------------------------------------------------------
 #   Main lifelong learning loop
 # -------------------------------------------------------------------------------------------
-T = 100  # number of tasks
+T = 50 # number of tasks
 for t in range(T):
     # generate task
     task = taskEnv.generate_task()
@@ -165,7 +166,12 @@ hyperPrior = np.ones(nPriors) / nPriors
 alpha = 1 / np.sqrt(T) + 1 / n_samples  # assuming all tasks have the same number of samples
 hyperPosterior = (hyperPrior ** alpha) * np.exp(-(1/T) * cumulativeBound)
 hyperPosterior = hyperPosterior / hyperPosterior.sum()
-print(hyperPosterior)
+# print(hyperPosterior)
+
+fig1 = plt.figure()
+plt.plot(priorsSetMuVal, hyperPosterior, 'o')
+plt.xlabel('Prior Mu')
+plt.ylabel('Hyper-Posterior')
 
 transferBound = np.sum(hyperPosterior * (cumulativeBound / T + alpha * np.log(hyperPosterior / hyperPrior)))
 print('Transfer Bound: {}'.format(transferBound))
@@ -209,6 +215,7 @@ print('Estimated transfer-error, using prior #0: {}'.format(errVec0prior.mean())
 print('Estimated transfer-error, not using prior: {}'.format(errVecNoPrior.mean()))
 
 
+plt.show()
 
 
 
