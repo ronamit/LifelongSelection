@@ -15,8 +15,8 @@ matplotlib.rcParams['ps.fonttype'] = 42
 device_id = 0
 torch.cuda.device(device_id)
 
-dim = 3
-delta = 0.95
+dim = 10
+delta = 0.99
 # -------------------------------------------------------------------------------------------
 #  Task-environment class
 # -------------------------------------------------------------------------------------------
@@ -167,13 +167,13 @@ def run_lifelong(T, showFlag):
     # print(hyperPosterior)
 
     transferBound = np.sum(hyperPosterior * (cumulativeBound / T
-                                             + alpha * np.log(hyperPosterior / hyperPrior))) \
+                                             + alpha * np.log(hyperPosterior / hyperPrior +1e-50))) \
                                              + (1/8 + np.log(1 / delta)) / np.sqrt(T)
 
     # -------------------------------------------------------------------------------------------
     # meta-testing
     # -------------------------------------------------------------------------------------------
-    nReps = 100
+    nReps = 10
     errVecAlg = np.zeros(nReps)
     errVec0prior = np.zeros(nReps)
     errVecNoPrior = np.zeros(nReps)
@@ -203,19 +203,20 @@ def run_lifelong(T, showFlag):
         errVecNoPrior[iRep] = task.est_test_error(est_a, 0)
     # end of iRep loop
 
+    mErrAlg = errVecAlg.mean()
+
     if showFlag:
         fig1 = plt.figure()
         plt.plot(priorsSetMuVal, hyperPosterior, 'o')
         plt.xlabel('Prior Mu')
         plt.ylabel('Hyper-Posterior')
-
         print('Transfer Bound: {}'.format(transferBound))
         print('Estimated transfer-error, using Lifelong Alg: {}'.format(errVecAlg.mean()))
         print('Estimated transfer-error, using Lifelong Alg +peak-posterior: {}'.format(errVecAlgPeak.mean()))
         print('Estimated transfer-error, using prior #0: {}'.format(errVec0prior.mean()))
         print('Estimated transfer-error, not using prior: {}'.format(errVecNoPrior.mean()))
 
-    return
+    return mErrAlg, transferBound
 # -------------------------------------------------------------------------------------------
 
 
@@ -224,12 +225,27 @@ def run_lifelong(T, showFlag):
 # -------------------------------------------------------------------------------------------
 
 # grid of number of tasks\horizon
-T = 10
-horizonsGrid = [T]
+# T = 10
+# horizonsGrid = [T]
+horizonsGrid = np.arange(1,11)
+nGrid = len(horizonsGrid)
+vecErrAlg = np.zeros(nGrid)
+vecTransferBound = np.zeros(nGrid)
 
 for iHorizon, T in enumerate(horizonsGrid):
     showFlag = (iHorizon == len(horizonsGrid) - 1) # show plot in final run
-    run_lifelong(T, showFlag)
+    mErrAlg, transferBound = run_lifelong(T, showFlag)
+    vecTransferBound[iHorizon] = transferBound
+    vecErrAlg[iHorizon] = mErrAlg
+
+fig1 = plt.figure()
+plt.title('Transfer Error')
+plt.plot(horizonsGrid, vecTransferBound, 'o', label='Bound')
+plt.plot(horizonsGrid, vecErrAlg, 'o', label='Error')
+plt.xlabel('Horizon')
+plt.ylabel('Loss')
+plt.legend()
+
 
 plt.show()
 
