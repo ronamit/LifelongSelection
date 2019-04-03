@@ -15,19 +15,21 @@ matplotlib.rcParams['ps.fonttype'] = 42
 device_id = 0
 torch.cuda.device(device_id)
 
+dim = 10
+
 # -------------------------------------------------------------------------------------------
 #  Task-environment class
 # -------------------------------------------------------------------------------------------
 class TaskEnvironment():
     def __init__(self):
-        self.aMean = 4
-        self.aStd = 0.1
-        self.noiseStd = 5.0
+        self.aMean = 3 * np.ones(dim)
+        self.aStd = 1.0 * np.ones(dim)
+        self.noiseStd = 6.0
         self.xRange = (0, 10)
 
     def generate_task(self):
-        dim = 1  # dimension of feature vector
-        a = self.aStd * np.random.randn(dim, 1) + self.aMean
+        # dim = 1  # dimension of feature vector
+        a = self.aStd * np.random.randn(dim) + self.aMean
         return Task(self, a)
 
 # -------------------------------------------------------------------------------------------
@@ -46,7 +48,7 @@ class Task():
         dim = self.dim
         x = self.xRange[0] + np.random.rand(n_samples, dim) * self.xRange[1]
         a = self.a
-        noise = self.noiseStd * np.random.randn(n_samples, dim)
+        noise = self.noiseStd * np.random.randn(n_samples)
         y = np.matmul(x, a) + noise
         samples = DataSet(x,y)
         return samples
@@ -106,7 +108,8 @@ def run_task_learner(trainData, priorMu, priorVar):
     matB = regFactor * priorMu + torch.matmul(x.t(), y)
     # postMu = torch.from_numpy(np.linalg.solve(matA, matB))
     postMu = torch.matmul(torch.pinverse(matA), matB)
-    taskBound = (1/n_samples) * (torch.norm(matB - matA.t() * postMu)**2 + regFactor * torch.norm(postMu - priorMu)**2)
+    taskBound = (1/n_samples) * (torch.norm(matB - torch.matmul(matA.t(), postMu))**2
+                                 + regFactor * torch.norm(postMu - priorMu)**2)
     # TODO: calculate exact bound for comparison with actual results
     return postMu, taskBound
 
@@ -116,8 +119,8 @@ def run_no_prior_learner(trainData):
     y = trainData.y
     dim = x.shape[1]
     n_samples = trainData.n_samples
-    matA =  torch.matmul(x.t(),  x)
-    matB =  torch.matmul(x.t(), y)
+    matA = torch.matmul(x.t(),  x)
+    matB = torch.matmul(x.t(), y)
     est = torch.matmul(torch.pinverse(matA), matB)
     return est
 # -------------------------------------------------------------------------------------------
@@ -125,7 +128,8 @@ def run_no_prior_learner(trainData):
 # -------------------------------------------------------------------------------------------
 # nPriors = 5
 # priorsSetMu = np.linspace(0.0, 10.0, nPriors)
-priorsSetMu = np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
+priorsSetMuVal = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+priorsSetMu = torch.tensor([np.ones(dim) * c for c in priorsSetMuVal]).type(torch.float)
 nPriors = priorsSetMu.shape[0]
 priorVar = 0.2**2  # TODO: make prior variance different so it will help the results which the prior is correct
 postVar = priorVar
@@ -155,7 +159,7 @@ for t in range(T):
 # hyper-posterior calculation
 # -------------------------------------------------------------------------------------------
 
-print([(priorsSetMu[k], cumulativeBound[k] / T) for k in range(nPriors)])
+print([(k, cumulativeBound[k] / T) for k in range(nPriors)])
 
 hyperPrior = np.ones(nPriors) / nPriors
 alpha = 1 / np.sqrt(T) + 1 / n_samples  # assuming all tasks have the same number of samples
@@ -177,7 +181,8 @@ errVecAlgPeak = np.zeros(nReps)
 
 for iRep in range(nReps):
     # draw prior from hyper-posterior
-    priorMu = np.random.choice(priorsSetMu, 1, p=hyperPosterior)[0]
+    priorInd = np.random.choice(nPriors, 1, p=hyperPosterior)[0]
+    priorMu = priorsSetMu[priorInd]
     # generate task
     task = taskEnv.generate_task()
     trainData = task.get_samples(n_samples)
@@ -185,7 +190,7 @@ for iRep in range(nReps):
     postMu, taskBound = run_task_learner(trainData, priorMu, priorVar)
     errVecAlg[iRep] = task.est_test_error(postMu, postVar)
 
-    # Check expected error when using learned hyper-posterior
+    # Check expected error when using learned hyper-posterior + peak of posterior
     postMu, taskBound = run_task_learner(trainData, priorMu, priorVar)
     errVecAlgPeak[iRep] = task.est_test_error(postMu, 0)
 
