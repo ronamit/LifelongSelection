@@ -58,8 +58,10 @@ class Task():
         testData = self.get_samples(n_samples_test)
         x = testData.x
         y = testData.y
-        test_err = (1/n_samples_test) * (torch.norm(y - torch.matmul(x, postMu))**2
-                                         + postVar * torch.norm(x)**2)
+        errDist = (y - torch.matmul(x, postMu))**2
+        # loss clipping:
+        errDistClip = torch.min(errDist, torch.ones_like(errDist))
+        test_err = torch.sum(errDistClip) / n_samples # + postVar * torch.norm(x)**2
         return test_err
 
 
