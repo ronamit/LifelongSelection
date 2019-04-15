@@ -15,7 +15,7 @@ matplotlib.rcParams['ps.fonttype'] = 42
 device_id = 0
 torch.cuda.device(device_id)
 
-dim = 10
+dim = 50
 delta = 0.99
 # -------------------------------------------------------------------------------------------
 #  Task-environment class
@@ -23,8 +23,8 @@ delta = 0.99
 class TaskEnvironment():
     def __init__(self):
         self.aMean = 3 * np.ones(dim)
-        self.aStd = 4.0 * np.ones(dim)
-        self.noiseStd = 5.0
+        self.aStd = 0.2**2 * np.ones(dim)
+        self.noiseStd = 1.0
         self.xRange = (0, 1)
 
     def generate_task(self):
@@ -61,7 +61,7 @@ class Task():
         errDist = (y - torch.matmul(x, postMu))**2
         # loss clipping:
         errDistClip = torch.min(errDist, torch.ones_like(errDist))
-        test_err = torch.sum(errDistClip) / n_samples # + postVar * torch.norm(x)**2
+        test_err = torch.mean(errDistClip) # + postVar * torch.norm(x)**2
         return test_err
 
 
@@ -136,7 +136,7 @@ priorsSetMuVal = np.linspace(0.0, 10.0, nPriors)
 priorsSetMu = torch.tensor([np.ones(dim) * c for c in priorsSetMuVal]).type(torch.float)
 nPriors = priorsSetMu.shape[0]
 priorVar = 0.2**2  # TODO: make prior variance different so it will help the results which the prior is correct
-postVar = priorVar
+postVar = 0.1 * priorVar
 
 n_samples = 100 # number of samples per task TODO: draw at random for each task
 
@@ -181,6 +181,8 @@ def run_lifelong(T, showFlag):
     errVecNoPrior = np.zeros(nReps)
     errVecAlgPeak = np.zeros(nReps)
 
+    benchmarkPrior = 0
+
     for iRep in range(nReps):
         # draw prior from hyper-posterior
         priorInd = np.random.choice(nPriors, 1, p=hyperPosterior)[0]
@@ -197,7 +199,7 @@ def run_lifelong(T, showFlag):
         errVecAlgPeak[iRep] = task.est_test_error(postMu, 0)
 
         # Check expected error when using prior #0
-        postMu, taskBound = run_task_learner(trainData, priorsSetMu[0], priorVar, 1)
+        postMu, taskBound = run_task_learner(trainData, priorsSetMu[benchmarkPrior], priorVar, 1)
         errVec0prior[iRep] = task.est_test_error(postMu, postVar)
 
         # Check expected error when using no prior
@@ -215,7 +217,7 @@ def run_lifelong(T, showFlag):
         print('Transfer Bound: {}'.format(transferBound))
         print('Estimated transfer-error, using Lifelong Alg: {}'.format(errVecAlg.mean()))
         print('Estimated transfer-error, using Lifelong Alg +peak-posterior: {}'.format(errVecAlgPeak.mean()))
-        print('Estimated transfer-error, using prior #0: {}'.format(errVec0prior.mean()))
+        print('Estimated transfer-error, using prior #{}: {}'.format(benchmarkPrior, errVec0prior.mean()))
         print('Estimated transfer-error, not using prior: {}'.format(errVecNoPrior.mean()))
 
     return mErrAlg, transferBound
@@ -229,7 +231,7 @@ def run_lifelong(T, showFlag):
 # grid of number of tasks\horizon
 # T = 10
 # horizonsGrid = [T]
-horizonsGrid = np.arange(1,11)
+horizonsGrid = range(1,101,10)
 nGrid = len(horizonsGrid)
 vecErrAlg = np.zeros(nGrid)
 vecTransferBound = np.zeros(nGrid)
