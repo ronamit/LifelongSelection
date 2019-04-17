@@ -17,6 +17,14 @@ torch.cuda.device(device_id)
 
 dim = 50
 delta = 0.99
+
+
+def mean_clipped_squared_loss(a, b):
+    errDist = (a - b) ** 2
+    # loss clipping:
+    errDist = torch.min(errDist, torch.ones_like(errDist))
+    return torch.mean(errDist)
+
 # -------------------------------------------------------------------------------------------
 #  Task-environment class
 # -------------------------------------------------------------------------------------------
@@ -58,10 +66,7 @@ class Task():
         testData = self.get_samples(n_samples_test)
         x = testData.x
         y = testData.y
-        errDist = (y - torch.matmul(x, postMu))**2
-        # loss clipping:
-        errDistClip = torch.min(errDist, torch.ones_like(errDist))
-        test_err = torch.mean(errDistClip) # + postVar * torch.norm(x)**2
+        test_err = mean_clipped_squared_loss(y, torch.matmul(x, postMu)) # + postVar * torch.norm(x)**2
         return test_err
 
 
@@ -110,9 +115,12 @@ def run_task_learner(trainData, priorMu, priorVar, T):
     matB = regFactor * priorMu + torch.matmul(x.t(), y)
     # postMu = torch.from_numpy(np.linalg.solve(matA, matB))
     postMu = torch.matmul(torch.pinverse(matA), matB)
+    # taskBound = mean_clipped_squared_loss(matB, torch.matmul(matA.t(), postMu))
+    # + (regFactor / n_samples) * torch.norm(postMu - priorMu)**2 + (1/8 + np.log(n_samples * T / delta)) / np.sqrt(n_samples)
     taskBound = (1/n_samples) * (torch.norm(matB - torch.matmul(matA.t(), postMu))**2
                                  + (regFactor) * torch.norm(postMu - priorMu)**2) \
                                  + (1/8 + np.log(n_samples * T / delta)) / np.sqrt(n_samples)
+
     # TODO: calculate exact bound for comparison with actual results - use the sqrtKL version
     return postMu, taskBound
 
